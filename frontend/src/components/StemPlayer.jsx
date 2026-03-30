@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Howl } from 'howler'
 import StemTrack from './StemTrack'
-import { getStemUrl, getDownloadUrl, deleteJob } from '../api'
+import { getStemUrl, getDownloadUrl } from '../api'
 
 const STEM_COLORS = {
   vocals: '#EC4899',
@@ -144,8 +144,7 @@ export default function StemPlayer({ jobId, stems, onReset }) {
     })
   }, [stems, volumes, muted])
 
-  const handleReset = async () => {
-    try { await deleteJob(jobId) } catch {}
+  const handleReset = () => {
     onReset()
   }
 
