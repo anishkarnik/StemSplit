@@ -50,6 +50,7 @@ async def list_sessions():
 async def upload_song(
     file: UploadFile = File(...),
     model: str = Form(default="htdemucs"),
+    quality: str = Form(default="medium"),
 ):
     if not file.filename:
         raise HTTPException(400, "File must have a filename")
@@ -61,6 +62,10 @@ async def upload_song(
     if model not in valid_models:
         raise HTTPException(400, f"Invalid model. Choose: {valid_models}")
 
+    valid_qualities = ["lossless", "high", "medium"]
+    if quality not in valid_qualities:
+        raise HTTPException(400, f"Invalid quality. Choose: {valid_qualities}")
+
     job_id = str(uuid.uuid4())
     upload_path = UPLOADS_DIR / f"{job_id}{ext}"
 
@@ -70,7 +75,7 @@ async def upload_song(
             raise HTTPException(413, "File too large (max 100MB)")
         await f.write(content)
 
-    await start_separation(job_id, str(upload_path), model, filename=file.filename)
+    await start_separation(job_id, str(upload_path), model, filename=file.filename, quality=quality)
 
     return {"job_id": job_id}
 
@@ -95,15 +100,13 @@ async def get_stem(job_id: str, stem_name: str):
     if not job or job["status"] != "done":
         raise HTTPException(404, "Job not done or not found")
 
-    stem_path = Path(job["job_dir"]) / f"{stem_name}.wav"
+    fmt = job.get("fmt", "wav")
+    stem_path = Path(job["job_dir"]) / f"{stem_name}.{fmt}"
     if not stem_path.exists():
         raise HTTPException(404, f"Stem '{stem_name}' not found")
 
-    return FileResponse(
-        str(stem_path),
-        media_type="audio/wav",
-        filename=f"{stem_name}.wav",
-    )
+    media_type = "audio/mpeg" if fmt == "mp3" else "audio/wav"
+    return FileResponse(str(stem_path), media_type=media_type, filename=f"{stem_name}.{fmt}")
 
 
 @app.get("/download/{job_id}")

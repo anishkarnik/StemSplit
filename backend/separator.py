@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any
@@ -10,7 +11,7 @@ import concurrent.futures
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Job store: { job_id: { status, progress, stems, error, model, filename, created_at, job_dir } }
+# Job store: { job_id: { status, progress, stems, error, model, filename, created_at, job_dir, fmt } }
 # status values: "pending" | "processing" | "done" | "error"
 jobs: Dict[str, Dict[str, Any]] = {}
 
@@ -21,7 +22,25 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 SESSIONS_FILE = OUTPUTS_DIR / "sessions.json"
 
+# quality → MP3 bitrate in kbps (None = keep WAV)
+QUALITY_BITRATE = {
+    "lossless": None,
+    "high":     320,
+    "medium":   192,
+}
+
 thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+
+def _convert_wav_to_mp3(wav_path: Path, bitrate: int) -> Path:
+    mp3_path = wav_path.with_suffix(".mp3")
+    subprocess.run(
+        ["ffmpeg", "-i", str(wav_path), "-b:a", f"{bitrate}k", "-y", str(mp3_path)],
+        check=True,
+        capture_output=True,
+    )
+    wav_path.unlink()
+    return mp3_path
 
 
 def _save_sessions():
@@ -32,6 +51,8 @@ def _save_sessions():
                 "job_id": jid,
                 "filename": j.get("filename", "Unknown"),
                 "model": j.get("model", "htdemucs"),
+                "quality": j.get("quality", "lossless"),
+                "fmt": j.get("fmt", "wav"),
                 "stems": j["stems"],
                 "created_at": j.get("created_at"),
                 "job_dir": j["job_dir"],
@@ -55,7 +76,8 @@ def _load_sessions():
             job_dir = Path(s["job_dir"])
             if not job_dir.exists():
                 continue
-            stems = [f.stem for f in job_dir.glob("*.wav")]
+            fmt = s.get("fmt", "wav")
+            stems = [f.stem for f in job_dir.glob(f"*.{fmt}")]
             if not stems:
                 continue
             jobs[s["job_id"]] = {
@@ -64,6 +86,8 @@ def _load_sessions():
                 "stems": stems,
                 "error": None,
                 "model": s.get("model", "htdemucs"),
+                "quality": s.get("quality", "lossless"),
+                "fmt": fmt,
                 "job_dir": str(job_dir),
                 "filename": s.get("filename", "Unknown"),
                 "created_at": s.get("created_at"),
@@ -74,7 +98,7 @@ def _load_sessions():
         logging.warning(f"Failed to load sessions: {e}")
 
 
-def _run_demucs(job_id: str, file_path: str, model: str):
+def _run_demucs(job_id: str, file_path: str, model: str, quality: str):
     """Runs Demucs separation synchronously (called in thread pool)."""
     import demucs.separate
     output_dir = str(OUTPUTS_DIR)
@@ -84,12 +108,12 @@ def _run_demucs(job_id: str, file_path: str, model: str):
 
     try:
         demucs.separate.main(args)
-        jobs[job_id]["progress"] = 90
+        jobs[job_id]["progress"] = 85
 
         file_stem = Path(file_path).stem
         stem_dir = OUTPUTS_DIR / model / file_stem
-
         job_dir = OUTPUTS_DIR / job_id
+
         if stem_dir.exists():
             if job_dir.exists():
                 shutil.rmtree(str(job_dir))
@@ -100,17 +124,29 @@ def _run_demucs(job_id: str, file_path: str, model: str):
                 "Separation may have failed silently."
             )
 
-        stems = [f.stem for f in job_dir.glob("*.wav")]
+        # Convert to MP3 if requested
+        bitrate = QUALITY_BITRATE.get(quality)
+        if bitrate is not None:
+            jobs[job_id]["progress"] = 92
+            logging.info(f"[job {job_id}] Converting stems to MP3 {bitrate}kbps...")
+            for wav_file in list(job_dir.glob("*.wav")):
+                _convert_wav_to_mp3(wav_file, bitrate)
+            fmt = "mp3"
+        else:
+            fmt = "wav"
+
+        stems = [f.stem for f in job_dir.glob(f"*.{fmt}")]
         if not stems:
-            raise FileNotFoundError(f"No .wav files found in output directory: {job_dir}")
+            raise FileNotFoundError(f"No .{fmt} files found in output directory: {job_dir}")
 
         jobs[job_id]["stems"] = stems
+        jobs[job_id]["fmt"] = fmt
         jobs[job_id]["status"] = "done"
         jobs[job_id]["progress"] = 100
         jobs[job_id]["job_dir"] = str(job_dir)
         jobs[job_id]["created_at"] = datetime.now(timezone.utc).isoformat()
         _save_sessions()
-        logging.info(f"[job {job_id}] Done — stems: {stems}")
+        logging.info(f"[job {job_id}] Done ({fmt}) — stems: {stems}")
     except Exception as e:
         logging.error(f"[job {job_id}] Separation failed: {e}", exc_info=True)
         jobs[job_id]["status"] = "error"
@@ -122,7 +158,10 @@ def _run_demucs(job_id: str, file_path: str, model: str):
             pass
 
 
-async def start_separation(job_id: str, file_path: str, model: str, filename: str = "Unknown"):
+async def start_separation(
+    job_id: str, file_path: str, model: str,
+    filename: str = "Unknown", quality: str = "medium"
+):
     """Launches separation in background thread."""
     jobs[job_id] = {
         "status": "pending",
@@ -130,13 +169,15 @@ async def start_separation(job_id: str, file_path: str, model: str, filename: st
         "stems": [],
         "error": None,
         "model": model,
+        "quality": quality,
+        "fmt": None,
         "job_dir": None,
         "filename": filename,
         "created_at": None,
     }
     loop = asyncio.get_running_loop()
     asyncio.ensure_future(
-        loop.run_in_executor(thread_pool, _run_demucs, job_id, file_path, model)
+        loop.run_in_executor(thread_pool, _run_demucs, job_id, file_path, model, quality)
     )
 
 

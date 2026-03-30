@@ -2,10 +2,11 @@ import axios from 'axios'
 
 const BASE = 'http://localhost:8001'
 
-export const uploadSong = (file, model, onProgress) => {
+export const uploadSong = (file, model, quality, onProgress) => {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('model', model)
+  formData.append('quality', quality)
   return axios.post(`${BASE}/upload`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: (e) => {

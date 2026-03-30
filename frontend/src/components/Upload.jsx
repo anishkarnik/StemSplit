@@ -6,6 +6,12 @@ const MODELS = [
   { id: 'htdemucs_6s', label: '6 Stems', description: 'Vocals · Drums · Bass · Guitar · Piano · Other', icon: '🎹' },
 ]
 
+const QUALITIES = [
+  { id: 'lossless', label: 'Lossless', description: 'WAV · Full quality', size: '~50 MB/stem' },
+  { id: 'high',     label: 'High',     description: 'MP3 320k · Transparent', size: '~12 MB/stem' },
+  { id: 'medium',   label: 'Medium',   description: 'MP3 192k · Excellent', size: '~7 MB/stem' },
+]
+
 const ACCEPTED = '.mp3,.wav,.flac,.m4a,.ogg,.aac'
 
 const STEM_COLORS = {
@@ -21,6 +27,7 @@ function formatDate(iso) {
 
 export default function Upload({ onSuccess, onOpenSession }) {
   const [model, setModel] = useState('htdemucs')
+  const [quality, setQuality] = useState('medium')
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -60,7 +67,7 @@ export default function Upload({ onSuccess, onOpenSession }) {
     setUploading(true)
     setError(null)
     try {
-      const res = await uploadSong(file, model, setUploadProgress)
+      const res = await uploadSong(file, model, quality, setUploadProgress)
       onSuccess(res.data.job_id)
     } catch (e) {
       setError(e.response?.data?.detail || 'Upload failed. Make sure the backend is running.')
@@ -108,6 +115,28 @@ export default function Upload({ onSuccess, onOpenSession }) {
               <div className="text-xl mb-1">{m.icon}</div>
               <div className="font-semibold text-sm">{m.label}</div>
               <div className="text-xs text-white/50 mt-0.5">{m.description}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Quality selector */}
+      <div>
+        <p className="text-sm font-medium text-white/60 mb-3">Output quality</p>
+        <div className="grid grid-cols-3 gap-3">
+          {QUALITIES.map((q) => (
+            <button
+              key={q.id}
+              onClick={() => setQuality(q.id)}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                quality === q.id
+                  ? 'border-purple-500 bg-purple-500/10'
+                  : 'border-white/10 bg-white/5 hover:border-white/20'
+              }`}
+            >
+              <div className="font-semibold text-sm">{q.label}</div>
+              <div className="text-xs text-white/50 mt-0.5">{q.description}</div>
+              <div className="text-xs text-white/30 mt-0.5">{q.size}</div>
             </button>
           ))}
         </div>

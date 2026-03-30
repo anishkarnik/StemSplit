@@ -50,7 +50,7 @@ export default function StemPlayer({ jobId, stems, onReset }) {
       const url = getStemUrl(jobId, stem)
       const howl = new Howl({
         src: [url],
-        format: ['wav'],
+        format: ['wav', 'mp3'],
         html5: false, // Web Audio API — sample-accurate sync across all stems
         onload: () => {
           newLoaded[stem] = true
