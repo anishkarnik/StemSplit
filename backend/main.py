@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import aiofiles
 
-from separator import start_separation, get_job, delete_job, UPLOADS_DIR, OUTPUTS_DIR
+from separator import start_separation, get_job, delete_job, jobs, UPLOADS_DIR
 
 app = FastAPI(title="StemSplit API")
 
@@ -29,19 +29,34 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/sessions")
+async def list_sessions():
+    sessions = [
+        {
+            "job_id": jid,
+            "filename": j.get("filename", "Unknown"),
+            "model": j.get("model"),
+            "stems": j["stems"],
+            "created_at": j.get("created_at"),
+        }
+        for jid, j in jobs.items()
+        if j["status"] == "done"
+    ]
+    sessions.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return sessions
+
+
 @app.post("/upload")
 async def upload_song(
     file: UploadFile = File(...),
     model: str = Form(default="htdemucs"),
 ):
-    # Validate extension
     if not file.filename:
         raise HTTPException(400, "File must have a filename")
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"Unsupported format. Use: {', '.join(ALLOWED_EXTENSIONS)}")
 
-    # Validate model
     valid_models = ["htdemucs", "htdemucs_6s"]
     if model not in valid_models:
         raise HTTPException(400, f"Invalid model. Choose: {valid_models}")
@@ -49,15 +64,13 @@ async def upload_song(
     job_id = str(uuid.uuid4())
     upload_path = UPLOADS_DIR / f"{job_id}{ext}"
 
-    # Save uploaded file
     async with aiofiles.open(upload_path, "wb") as f:
         content = await file.read()
         if len(content) > MAX_FILE_SIZE:
             raise HTTPException(413, "File too large (max 100MB)")
         await f.write(content)
 
-    # Start background separation
-    await start_separation(job_id, str(upload_path), model)
+    await start_separation(job_id, str(upload_path), model, filename=file.filename)
 
     return {"job_id": job_id}
 
@@ -100,8 +113,6 @@ async def download_all(job_id: str):
         raise HTTPException(404, "Job not done or not found")
 
     job_dir = Path(job["job_dir"])
-
-    # Create in-memory ZIP
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for wav_file in job_dir.glob("*.wav"):

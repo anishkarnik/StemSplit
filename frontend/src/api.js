@@ -27,3 +27,6 @@ export const getDownloadUrl = (jobId) =>
 
 export const deleteJob = (jobId) =>
   axios.delete(`${BASE}/job/${jobId}`)
+
+export const getSessions = () =>
+  axios.get(`${BASE}/sessions`)

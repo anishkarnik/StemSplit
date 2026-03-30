@@ -13,6 +13,12 @@ export default function App() {
     setView('processing')
   }
 
+  const handleOpenSession = useCallback((id, stemList) => {
+    setJobId(id)
+    setStems(stemList)
+    setView('player')
+  }, [])
+
   const handleProcessingDone = useCallback((stemList) => {
     setStems(stemList)
     setView('player')
@@ -37,7 +43,7 @@ export default function App() {
 
       <main className="max-w-4xl mx-auto px-4 py-12">
         {view === 'upload' && (
-          <Upload onSuccess={handleUploadSuccess} />
+          <Upload onSuccess={handleUploadSuccess} onOpenSession={handleOpenSession} />
         )}
         {view === 'processing' && (
           <ProcessingView jobId={jobId} onDone={handleProcessingDone} onError={handleReset} />

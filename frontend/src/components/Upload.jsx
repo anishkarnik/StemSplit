@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react'
-import { uploadSong } from '../api'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { uploadSong, getSessions, deleteJob } from '../api'
 
 const MODELS = [
   { id: 'htdemucs', label: '4 Stems', description: 'Vocals · Drums · Bass · Other', icon: '🎵' },
@@ -8,14 +8,32 @@ const MODELS = [
 
 const ACCEPTED = '.mp3,.wav,.flac,.m4a,.ogg,.aac'
 
-export default function Upload({ onSuccess }) {
+const STEM_COLORS = {
+  vocals: '#EC4899', drums: '#F59E0B', bass: '#3B82F6',
+  other: '#10B981', guitar: '#F97316', piano: '#8B5CF6',
+}
+
+function formatDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+export default function Upload({ onSuccess, onOpenSession }) {
   const [model, setModel] = useState('htdemucs')
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState(null)
+  const [sessions, setSessions] = useState([])
   const inputRef = useRef(null)
+
+  useEffect(() => {
+    getSessions()
+      .then((res) => setSessions(res.data))
+      .catch(() => {})
+  }, [])
 
   const handleFile = useCallback((f) => {
     if (!f) return
@@ -31,8 +49,7 @@ export default function Upload({ onSuccess }) {
   const onDrop = useCallback((e) => {
     e.preventDefault()
     setDragging(false)
-    const f = e.dataTransfer.files[0]
-    handleFile(f)
+    handleFile(e.dataTransfer.files[0])
   }, [handleFile])
 
   const onDragOver = (e) => { e.preventDefault(); setDragging(true) }
@@ -49,6 +66,12 @@ export default function Upload({ onSuccess }) {
       setError(e.response?.data?.detail || 'Upload failed. Make sure the backend is running.')
       setUploading(false)
     }
+  }
+
+  const handleDeleteSession = async (e, jobId) => {
+    e.stopPropagation()
+    try { await deleteJob(jobId) } catch {}
+    setSessions((prev) => prev.filter((s) => s.job_id !== jobId))
   }
 
   const formatSize = (bytes) => {
@@ -164,6 +187,48 @@ export default function Upload({ onSuccess }) {
           >
             {uploading ? 'Uploading...' : '✨ Separate Stems'}
           </button>
+        </div>
+      )}
+
+      {/* Recent sessions */}
+      {sessions.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-white/60">Recent sessions</p>
+          <div className="space-y-2">
+            {sessions.map((s) => (
+              <button
+                key={s.job_id}
+                onClick={() => onOpenSession(s.job_id, s.stems)}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-white/5 hover:border-purple-500/50 hover:bg-purple-500/5 transition-all text-left group"
+              >
+                <div className="text-2xl flex-shrink-0">🎵</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-white/90 truncate">{s.filename}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex gap-1">
+                      {s.stems.map((stem) => (
+                        <span
+                          key={stem}
+                          className="text-xs px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: `${STEM_COLORS[stem] || '#7C3AED'}22`, color: STEM_COLORS[stem] || '#7C3AED' }}
+                        >
+                          {stem}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-xs text-white/30">{formatDate(s.created_at)}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => handleDeleteSession(e, s.job_id)}
+                  className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-400 transition-all text-lg leading-none flex-shrink-0 px-1"
+                  title="Delete session"
+                >
+                  ×
+                </button>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

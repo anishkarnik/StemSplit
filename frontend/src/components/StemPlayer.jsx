@@ -51,7 +51,7 @@ export default function StemPlayer({ jobId, stems, onReset }) {
       const howl = new Howl({
         src: [url],
         format: ['wav'],
-        html5: true,
+        html5: false, // Web Audio API — sample-accurate sync across all stems
         onload: () => {
           newLoaded[stem] = true
           if (Object.keys(newLoaded).length === stems.length) {
@@ -98,9 +98,18 @@ export default function StemPlayer({ jobId, stems, onReset }) {
 
   const handleSeek = useCallback((val) => {
     const secs = (val / 100) * duration
+    // Pause → seek all → resume atomically to prevent drift
+    if (playing) {
+      clearInterval(seekIntervalRef.current)
+      Object.values(howlsRef.current).forEach((h) => h.pause())
+    }
     Object.values(howlsRef.current).forEach((h) => h.seek(secs))
     setSeek(secs)
-  }, [duration])
+    if (playing) {
+      Object.values(howlsRef.current).forEach((h) => h.play())
+      seekIntervalRef.current = setInterval(syncSeek, 250)
+    }
+  }, [duration, playing, syncSeek])
 
   const setVolume = useCallback((stem, vol) => {
     setVolumes((prev) => ({ ...prev, [stem]: vol }))
