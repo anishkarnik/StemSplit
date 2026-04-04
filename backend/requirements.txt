@@ -2,7 +2,5 @@ fastapi
 uvicorn[standard]
 python-multipart
 demucs
-torch
-torchaudio
 soundfile
 aiofiles

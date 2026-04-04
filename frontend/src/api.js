@@ -31,3 +31,6 @@ export const deleteJob = (jobId) =>
 
 export const getSessions = () =>
   axios.get(`${BASE}/sessions`)
+
+export const getCudaStatus = () =>
+  axios.get(`${BASE}/cuda-status`)

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { uploadSong, getSessions, deleteJob } from '../api'
+import { uploadSong, getSessions, deleteJob, getCudaStatus } from '../api'
 
 const MODELS = [
   { id: 'htdemucs', label: '4 Stems', description: 'Vocals · Drums · Bass · Other', icon: '🎵' },
@@ -34,11 +34,21 @@ export default function Upload({ onSuccess, onOpenSession }) {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState(null)
   const [sessions, setSessions] = useState([])
+  const [cudaStatus, setCudaStatus] = useState({ available: false, name: '' })
   const inputRef = useRef(null)
 
   useEffect(() => {
     getSessions()
       .then((res) => setSessions(res.data))
+      .catch(() => {})
+
+    getCudaStatus()
+      .then((res) => {
+        setCudaStatus({
+          available: res.data.cuda_available,
+          name: res.data.device_name
+        })
+      })
       .catch(() => {})
   }, [])
 
@@ -96,6 +106,21 @@ export default function Upload({ onSuccess, onOpenSession }) {
         <p className="text-white/50 text-lg max-w-lg mx-auto">
           Isolate vocals, drums, bass and instruments with AI. Powered by Demucs v4.
         </p>
+
+        {/* CUDA Status Badge */}
+        <div className="flex justify-center mt-2">
+          {cudaStatus.available ? (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/30 text-green-400 text-xs font-medium">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              Hardware Acceleration Active: {cudaStatus.name}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-white/40 text-xs font-medium">
+              <span className="w-2 h-2 rounded-full bg-white/20" />
+              Running on CPU
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Model selector */}

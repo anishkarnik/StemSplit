@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import aiofiles
 
-from separator import start_separation, get_job, delete_job, jobs, UPLOADS_DIR
+from separator import start_separation, get_job, delete_job, jobs, UPLOADS_DIR, device
 
 app = FastAPI(title="StemSplit API")
 
@@ -27,6 +27,16 @@ MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/cuda-status")
+async def cuda_status():
+    import torch
+    return {
+        "cuda_available": torch.cuda.is_available(),
+        "device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
+        "current_device": device
+    }
 
 
 @app.get("/sessions")

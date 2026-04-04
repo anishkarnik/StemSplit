@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Dict, Any
 import concurrent.futures
 
+import torch
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# Detect CUDA
+device = "cuda" if torch.cuda.is_available() else "cpu"
+logging.info(f"Using device: {device}")
 
 # Job store: { job_id: { status, progress, stems, error, model, filename, created_at, job_dir, fmt } }
 # status values: "pending" | "processing" | "done" | "error"
@@ -102,7 +108,7 @@ def _run_demucs(job_id: str, file_path: str, model: str, quality: str):
     """Runs Demucs separation synchronously (called in thread pool)."""
     import demucs.separate
     output_dir = str(OUTPUTS_DIR)
-    args = ["-n", model, "--out", output_dir, file_path]
+    args = ["-n", model, "--out", output_dir, "-d", device, file_path]
     jobs[job_id]["status"] = "processing"
     jobs[job_id]["progress"] = 10
 
